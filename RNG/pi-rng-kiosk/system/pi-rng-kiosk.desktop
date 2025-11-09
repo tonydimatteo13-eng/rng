@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=pi-rng-kiosk
+Exec=__PROJECT_DIR__/.venv/bin/python __PROJECT_DIR__/app.py
+X-GNOME-Autostart-enabled=true
+Comment=Hardware RNG monitor kiosk
+Terminal=false
