@@ -1,6 +1,7 @@
 import QtQuick 6.5
 import QtQuick.Controls 6.5
 import QtQuick.Layouts 6.5
+import QtMultimedia 6.5
 
 Window {
     id: root
@@ -28,10 +29,24 @@ Window {
         interval: 800
     }
 
+    Audio {
+        id: alertAudio
+        source: Qt.resolvedUrl("assets/alert_tone.wav")
+        loops: Audio.Infinite
+        volume: 0.6
+    }
+
     Connections {
         target: viewModel
         function onGdiChanged(value) { root.gdiValue = value }
-        function onStateChanged(value) { root.detectorState = value }
+        function onStateChanged(value) {
+            root.detectorState = value
+            if (value === "event" && alertAudio.status === Audio.Ready) {
+                alertAudio.play()
+            } else if (value !== "event") {
+                alertAudio.stop()
+            }
+        }
         function onSparklineChanged(value) { root.sparklineData = value; sparklineCanvas.requestPaint() }
         function onTestsChanged(value) { root.testsData = value }
         function onEventsChanged(value) { root.eventsData = value }
@@ -41,7 +56,30 @@ Window {
         id: tapper
         acceptedButtons: Qt.LeftButton
         onTapped: stack.currentIndex = (stack.currentIndex + 1) % stack.count
-        onLongPressed: viewModel.forceRefresh()
+    }
+
+    Rectangle {
+        id: exitButton
+        width: 120
+        height: 48
+        radius: 12
+        color: Qt.rgba(0, 0, 0, 0.4)
+        anchors.top: parent.top
+        anchors.right: parent.right
+        anchors.margins: 24
+        border.color: Qt.rgba(1, 1, 1, 0.2)
+        border.width: 1
+        visible: true
+        Label {
+            anchors.centerIn: parent
+            text: "Hold to Exit"
+            color: theme.calmText
+            font.pixelSize: 14
+        }
+        LongPressHandler {
+            minimumPressDuration: 800
+            onLongPressed: Qt.quit()
+        }
     }
 
     StackLayout {
