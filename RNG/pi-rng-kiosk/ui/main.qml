@@ -27,7 +27,7 @@ Window {
     ]
     property string exportMessage: ""
     property bool exportSuccess: true
-    property var viewTitles: ["Overview", "Events", "Distributions", "Timeline"]
+    property var viewTitles: ["Overview", "Events", "Distributions", "Timeline", "Settings"]
     property string currentViewTitle: viewTitles[0]
     property int pendingIndex: -1
     property bool alarmSilenced: false
@@ -225,36 +225,40 @@ Window {
             spacing: 12
             Text { text: "Window sizes (bits)"; color: theme.calmText }
             TextField {
-                id: windowsField
+                id: dialogWindowsField
                 text: root.settingsWindowsText
                 placeholderText: "1024, 10000, 100000"
+                onTextChanged: root.settingsWindowsText = text
             }
             Text { text: "GDI threshold"; color: theme.calmText }
             TextField {
-                id: gdiField
+                id: dialogGdiField
                 text: root.settingsGdiText
                 inputMethodHints: Qt.ImhFormattedNumbersOnly
+                onTextChanged: root.settingsGdiText = text
             }
             Text { text: "Sustained threshold"; color: theme.calmText }
             TextField {
-                id: sustainedField
+                id: dialogSustainedField
                 text: root.settingsSustainedText
                 inputMethodHints: Qt.ImhFormattedNumbersOnly
+                onTextChanged: root.settingsSustainedText = text
             }
             Text { text: "Sustained ticks"; color: theme.calmText }
             TextField {
-                id: ticksField
+                id: dialogTicksField
                 text: root.settingsTicksText
                 inputMethodHints: Qt.ImhDigitsOnly
+                onTextChanged: root.settingsTicksText = text
             }
             Text { text: "FDR q"; color: theme.calmText }
             TextField {
-                id: fdrField
+                id: dialogFdrField
                 text: root.settingsFdrText
                 inputMethodHints: Qt.ImhFormattedNumbersOnly
+                onTextChanged: root.settingsFdrText = text
             }
             Text {
-                id: settingsErrorText
                 text: root.settingsError
                 color: theme.warning
                 visible: root.settingsError.length > 0
@@ -265,12 +269,12 @@ Window {
                 Button {
                     text: "Apply"
                     Layout.fillWidth: true
-                    onClicked: root.submitSettings(false)
+                    onClicked: root.submitSettings(false, dialogWindowsField.text, dialogGdiField.text, dialogSustainedField.text, dialogTicksField.text, dialogFdrField.text, true)
                 }
                 Button {
                     text: "Apply & Save"
                     Layout.fillWidth: true
-                    onClicked: root.submitSettings(true)
+                    onClicked: root.submitSettings(true, dialogWindowsField.text, dialogGdiField.text, dialogSustainedField.text, dialogTicksField.text, dialogFdrField.text, true)
                 }
             }
         }
@@ -323,25 +327,33 @@ Window {
         return result
     }
 
-    function submitSettings(persist) {
-        var windows = parseWindowString(windowsField.text)
+    function submitSettings(persist, windowsText, gdiText, sustainedText, ticksText, fdrText, closeDialog) {
+        var windows = parseWindowString(windowsText)
         if (windows.length === 0) {
             root.settingsError = "Enter at least one window size"
+            return
+        }
+        var gdi = parseFloat(gdiText)
+        var sustained = parseFloat(sustainedText)
+        var ticks = parseInt(ticksText)
+        var fdr = parseFloat(fdrText)
+        if (isNaN(gdi) || isNaN(sustained) || isNaN(ticks) || isNaN(fdr)) {
+            root.settingsError = "Enter valid numeric thresholds"
             return
         }
         var payload = {
             windows: windows,
             alert: {
-                gdi_z: parseFloat(gdiField.text),
-                sustained_z: parseFloat(sustainedField.text),
-                sustained_ticks: parseInt(ticksField.text),
-                fdr_q: parseFloat(fdrField.text)
+                gdi_z: gdi,
+                sustained_z: sustained,
+                sustained_ticks: ticks,
+                fdr_q: fdr
             },
             persist: persist
         }
         root.settingsError = ""
         viewModel.applySettings(payload)
-        settingsDialog.close()
+        if (closeDialog) settingsDialog.close()
     }
 
     Component.onCompleted: root.currentViewTitle = root.viewTitles[stack.currentIndex]
@@ -723,6 +735,75 @@ Window {
                             horizontalAlignment: Text.AlignHCenter
                             verticalAlignment: Text.AlignVCenter
                         }
+                    }
+                }
+            }
+        }
+
+        Item {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            anchors.margins: 32
+            ColumnLayout {
+                anchors.fill: parent
+                spacing: 16
+                Label {
+                    text: "Settings"
+                    color: theme.calmText
+                    font.pixelSize: 24
+                }
+                Text { text: "Window sizes (bits)"; color: theme.calmText }
+                TextField {
+                    id: inlineWindowsField
+                    text: root.settingsWindowsText
+                    placeholderText: "1024, 10000, 100000"
+                    onTextChanged: root.settingsWindowsText = text
+                }
+                Text { text: "GDI threshold"; color: theme.calmText }
+                TextField {
+                    id: inlineGdiField
+                    text: root.settingsGdiText
+                    inputMethodHints: Qt.ImhFormattedNumbersOnly
+                    onTextChanged: root.settingsGdiText = text
+                }
+                Text { text: "Sustained threshold"; color: theme.calmText }
+                TextField {
+                    id: inlineSustainedField
+                    text: root.settingsSustainedText
+                    inputMethodHints: Qt.ImhFormattedNumbersOnly
+                    onTextChanged: root.settingsSustainedText = text
+                }
+                Text { text: "Sustained ticks"; color: theme.calmText }
+                TextField {
+                    id: inlineTicksField
+                    text: root.settingsTicksText
+                    inputMethodHints: Qt.ImhDigitsOnly
+                    onTextChanged: root.settingsTicksText = text
+                }
+                Text { text: "FDR q"; color: theme.calmText }
+                TextField {
+                    id: inlineFdrField
+                    text: root.settingsFdrText
+                    inputMethodHints: Qt.ImhFormattedNumbersOnly
+                    onTextChanged: root.settingsFdrText = text
+                }
+                Text {
+                    text: root.settingsError
+                    color: theme.warning
+                    visible: root.settingsError.length > 0
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 12
+                    Button {
+                        text: "Apply"
+                        Layout.fillWidth: true
+                        onClicked: root.submitSettings(false, inlineWindowsField.text, inlineGdiField.text, inlineSustainedField.text, inlineTicksField.text, inlineFdrField.text, false)
+                    }
+                    Button {
+                        text: "Apply & Save"
+                        Layout.fillWidth: true
+                        onClicked: root.submitSettings(true, inlineWindowsField.text, inlineGdiField.text, inlineSustainedField.text, inlineTicksField.text, inlineFdrField.text, false)
                     }
                 }
             }
