@@ -16,8 +16,6 @@ Window {
     property var testsData: []
     property var eventsData: []
 
-    signal requestNextView()
-
     Themes {
         id: theme
     }
@@ -36,6 +34,14 @@ Window {
         volume: 0.6
     }
 
+    Timer {
+        id: sparklineTimer
+        interval: 1000
+        running: true
+        repeat: true
+        onTriggered: sparklineCanvas.requestPaint()
+    }
+
     Connections {
         target: viewModel
         function onGdiChanged(value) { root.gdiValue = value }
@@ -52,34 +58,35 @@ Window {
         function onEventsChanged(value) { root.eventsData = value }
     }
 
-    TapHandler {
-        id: tapper
-        acceptedButtons: Qt.LeftButton
-        onTapped: stack.currentIndex = (stack.currentIndex + 1) % stack.count
-    }
-
-    Rectangle {
+    Button {
         id: exitButton
-        width: 120
-        height: 48
-        radius: 12
-        color: Qt.rgba(0, 0, 0, 0.4)
+        text: "Exit"
         anchors.top: parent.top
         anchors.right: parent.right
         anchors.margins: 24
-        border.color: Qt.rgba(1, 1, 1, 0.2)
-        border.width: 1
-        visible: true
-        Label {
-            anchors.centerIn: parent
-            text: "Hold to Exit"
+        padding: 12
+        background: Rectangle {
+            radius: 18
+            color: Qt.rgba(0, 0, 0, 0.5)
+            border.color: Qt.rgba(1, 1, 1, 0.2)
+            border.width: 1
+        }
+        contentItem: Text {
+            text: exitButton.text
             color: theme.calmText
-            font.pixelSize: 14
+            font.pixelSize: 16
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
         }
-        TapHandler {
-            longPressThreshold: 800
-            onLongPressed: Qt.quit()
-        }
+        onClicked: exitDialog.open()
+    }
+
+    Dialog {
+        id: exitDialog
+        modal: true
+        title: "Exit kiosk?"
+        standardButtons: DialogButtonBox.Ok | DialogButtonBox.Cancel
+        onAccepted: Qt.quit()
     }
 
     StackLayout {
@@ -242,6 +249,54 @@ Window {
                     }
                 }
             }
+        }
+    }
+
+    Row {
+        id: navigationControls
+        spacing: 24
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: 24
+
+        Button {
+            id: prevButton
+            implicitWidth: 72
+            implicitHeight: 72
+            background: Rectangle {
+                radius: width / 2
+                color: Qt.rgba(0, 0, 0, 0.35)
+                border.color: Qt.rgba(1, 1, 1, 0.2)
+                border.width: 1
+            }
+            contentItem: Text {
+                text: "‹"
+                font.pixelSize: 28
+                color: theme.calmText
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+            }
+            onClicked: stack.currentIndex = (stack.currentIndex - 1 + stack.count) % stack.count
+        }
+
+        Button {
+            id: nextButton
+            implicitWidth: 72
+            implicitHeight: 72
+            background: Rectangle {
+                radius: width / 2
+                color: Qt.rgba(0, 0, 0, 0.35)
+                border.color: Qt.rgba(1, 1, 1, 0.2)
+                border.width: 1
+            }
+            contentItem: Text {
+                text: "›"
+                font.pixelSize: 28
+                color: theme.calmText
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+            }
+            onClicked: stack.currentIndex = (stack.currentIndex + 1) % stack.count
         }
     }
 }
