@@ -76,8 +76,8 @@ Window {
             color: theme.calmText
             font.pixelSize: 14
         }
-        LongPressHandler {
-            minimumPressDuration: 800
+        TapHandler {
+            longPressThreshold: 800
             onLongPressed: Qt.quit()
         }
     }
