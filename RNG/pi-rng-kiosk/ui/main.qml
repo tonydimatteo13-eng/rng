@@ -31,8 +31,6 @@ Window {
     property string currentViewTitle: viewTitles[0]
     property int pendingIndex: -1
     property bool alarmSilenced: false
-    property string exportMessage: ""
-    property bool exportSuccess: true
 
     Themes {
         id: theme
