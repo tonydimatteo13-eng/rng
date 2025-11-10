@@ -5,7 +5,7 @@ After=graphical-session.target
 [Service]
 Type=simple
 Environment=QT_QPA_PLATFORM=wayland
-ExecStart=__PROJECT_DIR__/.venv/bin/python __PROJECT_DIR__/app.py
+ExecStart=/bin/bash -lc "cd __PROJECT_DIR__ && ./scripts/update.sh && ./.venv/bin/python app.py"
 Restart=on-failure
 
 [Install]

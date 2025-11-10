@@ -29,7 +29,7 @@ At boot the kiosk launches full-screen, blanks the cursor, and starts collecting
 * **Detector:** `analysis/detector.py` enforces the calm → event → recover state machine using configurable thresholds/hysteresis.
 * **Storage:** `storage/metrics.py` keeps a ring buffer for the UI sparkline and snapshots raw bits whenever an event fires.
 * **Logging & export:** each analysis tick is appended to `data/logs/metrics.csv`, and a one-tap export copies the CSV plus recent snapshots to a USB drive.
-* **UI:** PySide6/QML (`ui/*.qml`) renders the gauge, sparkline, per-test lights, and events list. Touch taps cycle views; a long-press forces a refresh.
+* **UI:** PySide6/QML (`ui/*.qml`) renders the gauge, sparkline, per-test lights, and events list plus histogram/matrix/timeline views. A settings panel (gear button) lets operators live-tune window sizes and alert thresholds.
 
 ## Configuration (`config.yaml`)
 
@@ -77,6 +77,8 @@ Fixtures under `tests/fixtures/` provide biased and unbiased bitstreams that sho
 
 `scripts/install.sh` creates a venv, installs dependencies, drops a `.desktop` autostart entry plus a user-level systemd service (`system/pi-rng-kiosk.service`), and disables screen blanking. Edit the generated files under `~/.config` if you need to tweak the launch command.
 
+On boot, the systemd unit runs `scripts/update.sh` before launching the app so the kiosk always pulls the latest `main`. If the Pi is offline the update step is skipped and the last synced build launches.
+
 ## Troubleshooting
 
 | Symptom | Fix |
@@ -88,3 +90,7 @@ Fixtures under `tests/fixtures/` provide biased and unbiased bitstreams that sho
 ## Data export
 
 Attach a FAT/exFAT-formatted USB drive and ensure it is mounted at the path configured in `config.yaml` (default `/media/pi/RNG-LOGS`). Tap **Export Logs** in the kiosk UI; the app writes a timestamped folder containing `metrics.csv` and the latest snapshots to the USB drive. The export status banner confirms success or highlights any mount/permission issues.
+
+## Live settings
+
+Tap **Settings** to adjust rolling-window sizes and alert thresholds. **Apply** updates the running analyzer immediately, while **Apply & Save** persists the overrides back to `config.yaml` so they survive a reboot.

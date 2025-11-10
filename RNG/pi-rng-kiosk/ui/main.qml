@@ -31,6 +31,21 @@ Window {
     property string currentViewTitle: viewTitles[0]
     property int pendingIndex: -1
     property bool alarmSilenced: false
+    property var settingsSource: initialSettings ? initialSettings : ({
+        "windows": [1024, 10000, 100000],
+        "alert": {
+            "gdi_z": 3.0,
+            "sustained_z": 2.5,
+            "sustained_ticks": 5,
+            "fdr_q": 0.01
+        }
+    })
+    property string settingsWindowsText: settingsSource.windows.join(", ")
+    property string settingsGdiText: settingsSource.alert.gdi_z
+    property string settingsSustainedText: settingsSource.alert.sustained_z
+    property string settingsTicksText: settingsSource.alert.sustained_ticks
+    property string settingsFdrText: settingsSource.alert.fdr_q
+    property string settingsError: ""
 
     Themes {
         id: theme
@@ -93,6 +108,17 @@ Window {
         }
         function onHistogramChanged(value) { root.histogramData = value }
         function onSerialMatrixChanged(value) { root.serialMatrixData = value }
+        function onSettingsApplied(payload) {
+            if (payload.windows && payload.windows.length) {
+                root.settingsWindowsText = payload.windows.join(", ")
+            }
+            if (payload.alert) {
+                if (payload.alert.gdi_z !== undefined) root.settingsGdiText = payload.alert.gdi_z
+                if (payload.alert.sustained_z !== undefined) root.settingsSustainedText = payload.alert.sustained_z
+                if (payload.alert.sustained_ticks !== undefined) root.settingsTicksText = payload.alert.sustained_ticks
+                if (payload.alert.fdr_q !== undefined) root.settingsFdrText = payload.alert.fdr_q
+            }
+        }
     }
 
     Button {
@@ -130,6 +156,32 @@ Window {
     }
 
     Button {
+        id: settingsButton
+        text: "Settings"
+        anchors.top: parent.top
+        anchors.right: exitButton.left
+        anchors.margins: 24
+        padding: 12
+        background: Rectangle {
+            radius: 18
+            color: Qt.rgba(0, 0, 0, 0.5)
+            border.color: Qt.rgba(1, 1, 1, 0.2)
+            border.width: 1
+        }
+        contentItem: Text {
+            text: settingsButton.text
+            color: theme.calmText
+            font.pixelSize: 16
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+        }
+        onClicked: {
+            root.settingsError = ""
+            settingsDialog.open()
+        }
+    }
+
+    Button {
         id: exitButton
         text: "Exit"
         anchors.top: parent.top
@@ -158,6 +210,70 @@ Window {
         title: "Exit kiosk?"
         standardButtons: DialogButtonBox.Ok | DialogButtonBox.Cancel
         onAccepted: Qt.quit()
+    }
+
+    Dialog {
+        id: settingsDialog
+        modal: true
+        width: 420
+        title: "Live Settings"
+        standardButtons: DialogButtonBox.Close
+        onRejected: root.settingsError = ""
+        contentItem: ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 16
+            spacing: 12
+            Text { text: "Window sizes (bits)"; color: theme.calmText }
+            TextField {
+                id: windowsField
+                text: root.settingsWindowsText
+                placeholderText: "1024, 10000, 100000"
+            }
+            Text { text: "GDI threshold"; color: theme.calmText }
+            TextField {
+                id: gdiField
+                text: root.settingsGdiText
+                inputMethodHints: Qt.ImhFormattedNumbersOnly
+            }
+            Text { text: "Sustained threshold"; color: theme.calmText }
+            TextField {
+                id: sustainedField
+                text: root.settingsSustainedText
+                inputMethodHints: Qt.ImhFormattedNumbersOnly
+            }
+            Text { text: "Sustained ticks"; color: theme.calmText }
+            TextField {
+                id: ticksField
+                text: root.settingsTicksText
+                inputMethodHints: Qt.ImhDigitsOnly
+            }
+            Text { text: "FDR q"; color: theme.calmText }
+            TextField {
+                id: fdrField
+                text: root.settingsFdrText
+                inputMethodHints: Qt.ImhFormattedNumbersOnly
+            }
+            Text {
+                id: settingsErrorText
+                text: root.settingsError
+                color: theme.warning
+                visible: root.settingsError.length > 0
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 12
+                Button {
+                    text: "Apply"
+                    Layout.fillWidth: true
+                    onClicked: root.submitSettings(false)
+                }
+                Button {
+                    text: "Apply & Save"
+                    Layout.fillWidth: true
+                    onClicked: root.submitSettings(true)
+                }
+            }
+        }
     }
 
     Text {
@@ -193,6 +309,39 @@ Window {
         }
         root.pendingIndex = index
         viewFade.restart()
+    }
+
+    function parseWindowString(text) {
+        var parts = text.split(/[,\s]+/)
+        var result = []
+        for (var i = 0; i < parts.length; i++) {
+            var value = parseInt(parts[i])
+            if (!isNaN(value) && value > 0) {
+                result.push(value)
+            }
+        }
+        return result
+    }
+
+    function submitSettings(persist) {
+        var windows = parseWindowString(windowsField.text)
+        if (windows.length === 0) {
+            root.settingsError = "Enter at least one window size"
+            return
+        }
+        var payload = {
+            windows: windows,
+            alert: {
+                gdi_z: parseFloat(gdiField.text),
+                sustained_z: parseFloat(sustainedField.text),
+                sustained_ticks: parseInt(ticksField.text),
+                fdr_q: parseFloat(fdrField.text)
+            },
+            persist: persist
+        }
+        root.settingsError = ""
+        viewModel.applySettings(payload)
+        settingsDialog.close()
     }
 
     Component.onCompleted: root.currentViewTitle = root.viewTitles[stack.currentIndex]

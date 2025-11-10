@@ -9,7 +9,7 @@ import threading
 import time
 from pathlib import Path
 from queue import Empty, Queue
-from typing import Dict, List, Sequence, Tuple
+from typing import Any, Dict, List, Sequence, Tuple
 
 import numpy as np
 import yaml
@@ -33,16 +33,20 @@ class PipelineRunner:
     def __init__(
         self,
         config: Dict,
+        config_path: Path,
         snapshot_queue: Queue,
         fake_seed: int | None,
         inject_bias: float,
     ) -> None:
         self.config = config
+        self.config_path = config_path
         self.snapshot_queue = snapshot_queue
         self.fake_seed = fake_seed
         self.inject_bias = max(0.0, min(inject_bias, 0.5))
         self._stop_flag = threading.Event()
         self._thread: threading.Thread | None = None
+        self._settings_queue: Queue = Queue()
+        self._current_windows = list(config["windows"]["sizes"])
         self.detector = Detector(
             DetectorConfig(
                 gdi_threshold=config["alert"]["gdi_z"],
@@ -119,14 +123,14 @@ class PipelineRunner:
         source.close()
         fallback.close()
 
+    def enqueue_settings(self, payload: Dict) -> None:
+        self._settings_queue.put(payload)
+
     async def _analyzer_loop(self, bit_queue: asyncio.Queue[int]) -> None:
-        windows = RollingBitWindows(self.config["windows"]["sizes"])
+        windows = RollingBitWindows(self._current_windows)
         history_bits: List[int] = []
         interval = self.config["windows"]["analysis_interval_ms"] / 1000
-        history_cap = max(
-            self.config["storage"]["snapshot_bits"],
-            max(self.config["windows"]["sizes"]),
-        )
+        history_cap = self._history_cap()
         last_emit = time.monotonic()
         while not self._stop_flag.is_set():
             try:
@@ -138,6 +142,10 @@ class PipelineRunner:
                 bit_queue.task_done()
             except asyncio.TimeoutError:
                 pass
+
+            windows, history_bits, history_cap = self._process_pending_settings(
+                windows, history_bits, history_cap
+            )
 
             now = time.monotonic()
             if now - last_emit < interval:
@@ -171,6 +179,109 @@ class PipelineRunner:
             mutated[idx] ^= 1
         return mutated
 
+    def _process_pending_settings(
+        self,
+        windows: RollingBitWindows,
+        history_bits: List[int],
+        history_cap: int,
+    ) -> Tuple[RollingBitWindows, List[int], int]:
+        updated = False
+        while True:
+            try:
+                payload = self._settings_queue.get_nowait()
+            except Empty:
+                break
+            windows, history_bits, history_cap = self._apply_settings_payload(
+                payload, windows, history_bits, history_cap
+            )
+            updated = True
+        if updated:
+            LOGGER.info(
+                "Applied settings: windows=%s gdi=%.2f",
+                self._current_windows,
+                self.detector.config.gdi_threshold,
+            )
+        return windows, history_bits, history_cap
+
+    def _apply_settings_payload(
+        self,
+        payload: Dict,
+        windows: RollingBitWindows,
+        history_bits: List[int],
+        history_cap: int,
+    ) -> Tuple[RollingBitWindows, List[int], int]:
+        alert_payload = payload.get("alert") or {}
+        windows_payload = payload.get("windows")
+
+        if windows_payload:
+            cleaned: List[int] = []
+            for size in windows_payload:
+                try:
+                    value = int(float(size))
+                except (TypeError, ValueError):
+                    continue
+                if value > 0:
+                    cleaned.append(value)
+            if cleaned:
+                self._current_windows = cleaned
+                self.config["windows"]["sizes"] = cleaned
+                windows = RollingBitWindows(cleaned)
+                history_bits = []
+                history_cap = self._history_cap()
+
+        detector_config = self.detector.config
+        if "gdi_z" in alert_payload:
+            detector_config.gdi_threshold = self._safe_float(
+                alert_payload["gdi_z"], detector_config.gdi_threshold
+            )
+            self.config["alert"]["gdi_z"] = detector_config.gdi_threshold
+        if "sustained_z" in alert_payload:
+            detector_config.sustained_threshold = self._safe_float(
+                alert_payload["sustained_z"], detector_config.sustained_threshold
+            )
+            self.config["alert"]["sustained_z"] = detector_config.sustained_threshold
+        if "sustained_ticks" in alert_payload:
+            detector_config.sustained_ticks = self._safe_int(
+                alert_payload["sustained_ticks"], detector_config.sustained_ticks
+            )
+            self.config["alert"]["sustained_ticks"] = detector_config.sustained_ticks
+        if "fdr_q" in alert_payload:
+            detector_config.fdr_q_threshold = self._safe_float(
+                alert_payload["fdr_q"], detector_config.fdr_q_threshold
+            )
+            self.config["alert"]["fdr_q"] = detector_config.fdr_q_threshold
+
+        if payload.get("persist"):
+            self._persist_config()
+
+        return windows, history_bits, history_cap
+
+    def _history_cap(self) -> int:
+        storage_bits = self.config.get("storage", {}).get("snapshot_bits", 0)
+        window_max = max(self._current_windows) if self._current_windows else 0
+        return max(storage_bits, window_max)
+
+    def _persist_config(self) -> None:
+        try:
+            with self.config_path.open("w", encoding="utf-8") as handle:
+                yaml.safe_dump(self.config, handle, sort_keys=False)
+        except Exception:
+            LOGGER.exception("Failed to persist config overrides")
+
+    @staticmethod
+    def _safe_float(value: Any, default: float) -> float:
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return default
+
+    @staticmethod
+    def _safe_int(value: Any, default: int) -> int:
+        try:
+            return int(float(value))
+        except (TypeError, ValueError):
+            return default
+
 
 class RNGViewModel(QtCore.QObject):
     gdiChanged = QtCore.Signal(float)
@@ -181,11 +292,13 @@ class RNGViewModel(QtCore.QObject):
     exportCompleted = QtCore.Signal(bool, str)
     histogramChanged = QtCore.Signal(list)
     serialMatrixChanged = QtCore.Signal(list)
+    settingsApplied = QtCore.Signal(dict)
 
     def __init__(
         self,
         queue: Queue,
         metrics: MetricsStore,
+        pipeline: PipelineRunner,
         usb_mount: Path,
         export_snapshot_count: int | None = None,
         parent=None,
@@ -193,6 +306,7 @@ class RNGViewModel(QtCore.QObject):
         super().__init__(parent)
         self._queue = queue
         self.metrics = metrics
+        self.pipeline = pipeline
         self.usb_mount = usb_mount
         self.export_snapshot_count = export_snapshot_count
         self._timer = QtCore.QTimer(self)
@@ -210,6 +324,12 @@ class RNGViewModel(QtCore.QObject):
             self.usb_mount, self.export_snapshot_count
         )
         self.exportCompleted.emit(success, message)
+
+    @QtCore.Slot("QVariantMap")
+    def applySettings(self, payload: Dict) -> None:
+        payload = dict(payload)
+        self.pipeline.enqueue_settings(payload)
+        self.settingsApplied.emit(payload)
 
     def _drain_queue(self) -> None:
         updated = False
@@ -351,6 +471,7 @@ def main() -> int:
 
     pipeline = PipelineRunner(
         config=config,
+        config_path=Path(args.config),
         snapshot_queue=queue,
         fake_seed=fake_seed,
         inject_bias=args.inject_bias,
@@ -362,11 +483,19 @@ def main() -> int:
     view_model = RNGViewModel(
         queue,
         metrics,
+        pipeline,
         usb_mount=usb_mount,
         export_snapshot_count=export_snapshot_count,
     )
     engine = QtQml.QQmlApplicationEngine()
     engine.rootContext().setContextProperty("viewModel", view_model)
+    engine.rootContext().setContextProperty(
+        "initialSettings",
+        {
+            "windows": config["windows"]["sizes"],
+            "alert": config["alert"],
+        },
+    )
     main_qml = Path(__file__).parent / "ui" / "main.qml"
     engine.load(str(main_qml))
     if not engine.rootObjects():
