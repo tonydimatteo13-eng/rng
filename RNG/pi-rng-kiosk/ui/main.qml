@@ -207,54 +207,121 @@ Window {
     Dialog {
         id: exitDialog
         modal: true
-        title: "Exit kiosk?"
-        standardButtons: DialogButtonBox.Ok | DialogButtonBox.Cancel
-        onAccepted: Qt.quit()
+        width: 420
+        background: Rectangle {
+            color: Qt.rgba(4/255, 11/255, 22/255, 0.95)
+            radius: 20
+            border.color: Qt.rgba(255, 255, 255, 0.08)
+            border.width: 1
+        }
+        contentItem: ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 24
+            spacing: 20
+            Label {
+                text: "Exit kiosk?"
+                color: theme.calmText
+                font.pixelSize: 28
+                font.bold: true
+            }
+            Label {
+                text: "This will stop data collection and close the display."
+                wrapMode: Text.Wrap
+                color: Qt.rgba(1, 1, 1, 0.8)
+                font.pixelSize: 18
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 16
+                Button {
+                    text: "Cancel"
+                    Layout.fillWidth: true
+                    background: Rectangle {
+                        radius: 18
+                        color: Qt.rgba(0, 0, 0, 0.4)
+                        border.color: Qt.rgba(1, 1, 1, 0.2)
+                    }
+                    onClicked: exitDialog.close()
+                }
+                Button {
+                    text: "Exit"
+                    Layout.fillWidth: true
+                    background: Rectangle {
+                        radius: 18
+                        color: theme.eventAccent
+                        border.color: Qt.rgba(1, 1, 1, 0.2)
+                    }
+                    contentItem: Text {
+                        text: parent.text
+                        color: "#0b0f1c"
+                        font.pixelSize: 18
+                        font.bold: true
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    onClicked: Qt.quit()
+                }
+            }
+        }
     }
 
     Dialog {
         id: settingsDialog
         modal: true
-        width: 420
-        title: "Live Settings"
-        standardButtons: DialogButtonBox.Close
-        onRejected: root.settingsError = ""
+        width: 520
+        background: Rectangle {
+            color: Qt.rgba(4/255, 11/255, 22/255, 0.95)
+            radius: 24
+            border.color: Qt.rgba(1, 1, 1, 0.05)
+            border.width: 1
+        }
         contentItem: ColumnLayout {
             anchors.fill: parent
-            anchors.margins: 16
-            spacing: 12
-            Text { text: "Window sizes (bits)"; color: theme.calmText }
+            anchors.margins: 24
+            spacing: 18
+            Label {
+                text: "Live Settings"
+                color: theme.calmText
+                font.pixelSize: 28
+                font.bold: true
+            }
+            Text { text: "Window sizes (bits)"; color: theme.calmText; font.pixelSize: 18 }
             TextField {
                 id: dialogWindowsField
                 text: root.settingsWindowsText
                 placeholderText: "1024, 10000, 100000"
+                font.pixelSize: 18
                 onTextChanged: root.settingsWindowsText = text
             }
-            Text { text: "GDI threshold"; color: theme.calmText }
+            Text { text: "GDI threshold"; color: theme.calmText; font.pixelSize: 18 }
             TextField {
                 id: dialogGdiField
                 text: root.settingsGdiText
+                font.pixelSize: 18
                 inputMethodHints: Qt.ImhFormattedNumbersOnly
                 onTextChanged: root.settingsGdiText = text
             }
-            Text { text: "Sustained threshold"; color: theme.calmText }
+            Text { text: "Sustained threshold"; color: theme.calmText; font.pixelSize: 18 }
             TextField {
                 id: dialogSustainedField
                 text: root.settingsSustainedText
+                font.pixelSize: 18
                 inputMethodHints: Qt.ImhFormattedNumbersOnly
                 onTextChanged: root.settingsSustainedText = text
             }
-            Text { text: "Sustained ticks"; color: theme.calmText }
+            Text { text: "Sustained ticks"; color: theme.calmText; font.pixelSize: 18 }
             TextField {
                 id: dialogTicksField
                 text: root.settingsTicksText
+                font.pixelSize: 18
                 inputMethodHints: Qt.ImhDigitsOnly
                 onTextChanged: root.settingsTicksText = text
             }
-            Text { text: "FDR q"; color: theme.calmText }
+            Text { text: "FDR q"; color: theme.calmText; font.pixelSize: 18 }
             TextField {
                 id: dialogFdrField
                 text: root.settingsFdrText
+                font.pixelSize: 18
                 inputMethodHints: Qt.ImhFormattedNumbersOnly
                 onTextChanged: root.settingsFdrText = text
             }
@@ -262,10 +329,16 @@ Window {
                 text: root.settingsError
                 color: theme.warning
                 visible: root.settingsError.length > 0
+                font.pixelSize: 16
             }
             RowLayout {
                 Layout.fillWidth: true
-                spacing: 12
+                spacing: 16
+                Button {
+                    text: "Cancel"
+                    Layout.fillWidth: true
+                    onClicked: settingsDialog.close()
+                }
                 Button {
                     text: "Apply"
                     Layout.fillWidth: true
@@ -752,45 +825,55 @@ Window {
                     color: theme.calmText
                     font.pixelSize: 24
                 }
-                Text { text: "Window sizes (bits)"; color: theme.calmText }
+                Text {
+                    text: "Window sizes (bits)"
+                    color: theme.calmText
+                    font.pixelSize: 20
+                }
                 TextField {
                     id: inlineWindowsField
                     text: root.settingsWindowsText
                     placeholderText: "1024, 10000, 100000"
                     onTextChanged: root.settingsWindowsText = text
+                    font.pixelSize: 20
                 }
-                Text { text: "GDI threshold"; color: theme.calmText }
+                Text { text: "GDI threshold"; color: theme.calmText; font.pixelSize: 20 }
                 TextField {
                     id: inlineGdiField
                     text: root.settingsGdiText
                     inputMethodHints: Qt.ImhFormattedNumbersOnly
                     onTextChanged: root.settingsGdiText = text
+                    font.pixelSize: 20
                 }
-                Text { text: "Sustained threshold"; color: theme.calmText }
+                Text { text: "Sustained threshold"; color: theme.calmText; font.pixelSize: 20 }
                 TextField {
                     id: inlineSustainedField
                     text: root.settingsSustainedText
                     inputMethodHints: Qt.ImhFormattedNumbersOnly
                     onTextChanged: root.settingsSustainedText = text
+                    font.pixelSize: 20
                 }
-                Text { text: "Sustained ticks"; color: theme.calmText }
+                Text { text: "Sustained ticks"; color: theme.calmText; font.pixelSize: 20 }
                 TextField {
                     id: inlineTicksField
                     text: root.settingsTicksText
                     inputMethodHints: Qt.ImhDigitsOnly
                     onTextChanged: root.settingsTicksText = text
+                    font.pixelSize: 20
                 }
-                Text { text: "FDR q"; color: theme.calmText }
+                Text { text: "FDR q"; color: theme.calmText; font.pixelSize: 20 }
                 TextField {
                     id: inlineFdrField
                     text: root.settingsFdrText
                     inputMethodHints: Qt.ImhFormattedNumbersOnly
                     onTextChanged: root.settingsFdrText = text
+                    font.pixelSize: 20
                 }
                 Text {
                     text: root.settingsError
                     color: theme.warning
                     visible: root.settingsError.length > 0
+                    font.pixelSize: 18
                 }
                 RowLayout {
                     Layout.fillWidth: true
@@ -799,11 +882,13 @@ Window {
                         text: "Apply"
                         Layout.fillWidth: true
                         onClicked: root.submitSettings(false, inlineWindowsField.text, inlineGdiField.text, inlineSustainedField.text, inlineTicksField.text, inlineFdrField.text, false)
+                        font.pixelSize: 18
                     }
                     Button {
                         text: "Apply & Save"
                         Layout.fillWidth: true
                         onClicked: root.submitSettings(true, inlineWindowsField.text, inlineGdiField.text, inlineSustainedField.text, inlineTicksField.text, inlineFdrField.text, false)
+                        font.pixelSize: 18
                     }
                 }
             }
