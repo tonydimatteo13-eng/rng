@@ -15,6 +15,24 @@ Window {
     property var sparklineData: []
     property var testsData: []
     property var eventsData: []
+    property var histogramData: [
+        {"label": "0", "value": 0},
+        {"label": "1", "value": 0}
+    ]
+    property var serialMatrixData: [
+        {"label": "00", "value": 0},
+        {"label": "01", "value": 0},
+        {"label": "10", "value": 0},
+        {"label": "11", "value": 0}
+    ]
+    property string exportMessage: ""
+    property bool exportSuccess: true
+    property var viewTitles: ["Overview", "Events", "Distributions", "Timeline"]
+    property string currentViewTitle: viewTitles[0]
+    property int pendingIndex: -1
+    property bool alarmSilenced: false
+    property string exportMessage: ""
+    property bool exportSuccess: true
 
     Themes {
         id: theme
@@ -39,7 +57,17 @@ Window {
         interval: 1000
         running: true
         repeat: true
-        onTriggered: sparklineCanvas.requestPaint()
+        onTriggered: {
+            sparklineCanvas.requestPaint()
+            if (timelineCanvas) timelineCanvas.requestPaint()
+        }
+    }
+
+    Timer {
+        id: exportMessageTimer
+        interval: 5000
+        repeat: false
+        onTriggered: root.exportMessage = ""
     }
 
     Connections {
@@ -47,15 +75,60 @@ Window {
         function onGdiChanged(value) { root.gdiValue = value }
         function onStateChanged(value) {
             root.detectorState = value
-            if (value === "event" && alertAudio.status === Audio.Ready) {
+            if (value === "event" && alertAudio.status === Audio.Ready && !root.alarmSilenced) {
                 alertAudio.play()
-            } else if (value !== "event") {
+            } else if (value !== "event" || root.alarmSilenced) {
                 alertAudio.stop()
             }
         }
-        function onSparklineChanged(value) { root.sparklineData = value; sparklineCanvas.requestPaint() }
+        function onSparklineChanged(value) {
+            root.sparklineData = value
+            sparklineCanvas.requestPaint()
+            if (timelineCanvas) timelineCanvas.requestPaint()
+        }
         function onTestsChanged(value) { root.testsData = value }
         function onEventsChanged(value) { root.eventsData = value }
+        function onExportCompleted(success, message) {
+            root.exportSuccess = success
+            root.exportMessage = message
+            exportMessageTimer.restart()
+        }
+        function onHistogramChanged(value) { root.histogramData = value }
+        function onSerialMatrixChanged(value) { root.serialMatrixData = value }
+    }
+
+    Button {
+        id: exportButton
+        text: "Export Logs"
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.margins: 24
+        padding: 12
+        background: Rectangle {
+            radius: 18
+            color: Qt.rgba(0, 0, 0, 0.5)
+            border.color: Qt.rgba(1, 1, 1, 0.2)
+            border.width: 1
+        }
+        contentItem: Text {
+            text: exportButton.text
+            color: theme.calmText
+            font.pixelSize: 16
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+        }
+        onClicked: viewModel.exportToUsb()
+    }
+
+    Text {
+        id: exportStatus
+        anchors.top: exportButton.bottom
+        anchors.left: exportButton.left
+        anchors.topMargin: 8
+        text: root.exportMessage
+        color: root.exportSuccess ? theme.calmText : theme.warning
+        font.pixelSize: 14
+        visible: root.exportMessage.length > 0
     }
 
     Button {
@@ -89,9 +162,62 @@ Window {
         onAccepted: Qt.quit()
     }
 
+    Text {
+        id: viewTitle
+        text: root.currentViewTitle
+        anchors.top: parent.top
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.topMargin: 24
+        color: theme.calmText
+        font.pixelSize: 22
+        font.bold: true
+    }
+
+    SequentialAnimation {
+        id: viewFade
+        PropertyAnimation { target: stack; property: "opacity"; to: 0; duration: 150 }
+        ScriptAction {
+            script: {
+                if (root.pendingIndex >= 0) {
+                    stack.currentIndex = root.pendingIndex
+                    var idx = Math.min(root.pendingIndex, root.viewTitles.length - 1)
+                    root.currentViewTitle = root.viewTitles[idx]
+                }
+            }
+        }
+        PropertyAnimation { target: stack; property: "opacity"; to: 1; duration: 150 }
+        onFinished: root.pendingIndex = -1
+    }
+
+    function scheduleViewChange(index) {
+        if (index === stack.currentIndex || index < 0 || index >= stack.count) {
+            return
+        }
+        root.pendingIndex = index
+        viewFade.restart()
+    }
+
+    Component.onCompleted: root.currentViewTitle = root.viewTitles[stack.currentIndex]
+
+    Connections {
+        target: stack
+        function onCurrentIndexChanged() {
+            root.currentViewTitle = root.viewTitles[Math.min(stack.currentIndex, root.viewTitles.length - 1)]
+        }
+    }
+
+    onAlarmSilencedChanged: {
+        if (alarmSilenced) {
+            alertAudio.stop()
+        } else if (detectorState === "event" && alertAudio.status === Audio.Ready) {
+            alertAudio.play()
+        }
+    }
+
     StackLayout {
         id: stack
         anchors.fill: parent
+        opacity: 1
 
         Item {
             Layout.fillWidth: true
@@ -250,6 +376,210 @@ Window {
                 }
             }
         }
+
+        Item {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            anchors.margins: 32
+            ColumnLayout {
+                anchors.fill: parent
+                spacing: 24
+                Label {
+                    text: "Bit Distributions"
+                    color: theme.calmText
+                    font.pixelSize: 24
+                }
+                Rectangle {
+                    id: histogramCard
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 220
+                    radius: 12
+                    color: Qt.rgba(1, 1, 1, 0.04)
+                    border.color: Qt.rgba(1, 1, 1, 0.08)
+                    Row {
+                        anchors.fill: parent
+                        anchors.margins: 24
+                        spacing: 32
+                        Repeater {
+                            model: root.histogramData
+                            delegate: Column {
+                                width: (histogramCard.width - 48) / Math.max(1, root.histogramData.length)
+                                anchors.bottom: parent.bottom
+                                spacing: 8
+                                Rectangle {
+                                    width: parent.width * 0.6
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    height: {
+                                        var maxVal = 1
+                                        for (var i = 0; i < root.histogramData.length; i++) {
+                                            maxVal = Math.max(maxVal, root.histogramData[i].value)
+                                        }
+                                        if (maxVal === 0) {
+                                            return 0
+                                        }
+                                        return (modelData.value / maxVal) * (histogramCard.height - 100)
+                                    }
+                                    radius: 6
+                                    color: theme.calmAccent
+                                }
+                                Text {
+                                    text: modelData.value
+                                    color: theme.calmText
+                                    font.pixelSize: 16
+                                    horizontalAlignment: Text.AlignHCenter
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                }
+                                Text {
+                                    text: modelData.label
+                                    color: theme.calmText
+                                    font.pixelSize: 14
+                                    horizontalAlignment: Text.AlignHCenter
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                }
+                            }
+                        }
+                    }
+                }
+                Label {
+                    text: "Serial Matrix"
+                    color: theme.calmText
+                    font.pixelSize: 22
+                }
+                GridLayout {
+                    columns: 2
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    Layout.preferredHeight: 220
+                    rowSpacing: 12
+                    columnSpacing: 12
+                    Repeater {
+                        model: root.serialMatrixData
+                        delegate: Rectangle {
+                            radius: 10
+                            color: Qt.rgba(1, 1, 1, 0.03)
+                            border.color: Qt.rgba(1, 1, 1, 0.08)
+                            implicitHeight: 100
+                            implicitWidth: (parent.width - 12) / 2
+                            Column {
+                                anchors.centerIn: parent
+                                spacing: 4
+                                Text {
+                                    text: modelData.label
+                                    font.pixelSize: 18
+                                    font.bold: true
+                                    color: theme.calmText
+                                    horizontalAlignment: Text.AlignHCenter
+                                }
+                                Text {
+                                    text: modelData.value
+                                    font.pixelSize: 16
+                                    color: theme.calmAccent
+                                    horizontalAlignment: Text.AlignHCenter
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Item {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            anchors.margins: 32
+            ColumnLayout {
+                anchors.fill: parent
+                spacing: 24
+                Label {
+                    text: "Timeline & Source Mixer"
+                    color: theme.calmText
+                    font.pixelSize: 24
+                }
+                Rectangle {
+                    id: timelineCard
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 220
+                    radius: 12
+                    color: Qt.rgba(1, 1, 1, 0.04)
+                    border.color: Qt.rgba(1, 1, 1, 0.08)
+                    Canvas {
+                        id: timelineCanvas
+                        anchors.fill: parent
+                        anchors.margins: 16
+                        onPaint: {
+                            var ctx = getContext("2d")
+                            ctx.reset()
+                            ctx.strokeStyle = theme.eventAccent
+                            ctx.lineWidth = 2
+                            ctx.beginPath()
+                            if (root.sparklineData.length > 1) {
+                                var max = -999
+                                var min = 999
+                                for (var i = 0; i < root.sparklineData.length; i++) {
+                                    var val = root.sparklineData[i].gdi
+                                    max = Math.max(max, val)
+                                    min = Math.min(min, val)
+                                }
+                                var range = Math.max(1, max - min)
+                                for (var j = 0; j < root.sparklineData.length; j++) {
+                                    var point = root.sparklineData[j]
+                                    var normX = j / (root.sparklineData.length - 1)
+                                    var normY = (point.gdi - min) / range
+                                    var px = normX * width
+                                    var py = height - normY * height
+                                    if (j === 0) ctx.moveTo(px, py)
+                                    else ctx.lineTo(px, py)
+                                }
+                            }
+                            ctx.stroke()
+                        }
+                    }
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 24
+                    GroupBox {
+                        title: "Source Mixer"
+                        Layout.fillWidth: true
+                        RowLayout {
+                            anchors.fill: parent
+                            spacing: 16
+                            Switch {
+                                id: hwSwitch
+                                text: "Hardware RNG"
+                                checked: true
+                            }
+                            Switch {
+                                id: fallbackSwitch
+                                text: "Fallback RNG"
+                                checked: true
+                            }
+                        }
+                    }
+                    Button {
+                        id: silenceButton
+                        text: root.alarmSilenced ? "Alarm Silenced" : "Silence Alarm"
+                        checkable: true
+                        checked: root.alarmSilenced
+                        onToggled: root.alarmSilenced = checked
+                        Layout.preferredWidth: 180
+                        background: Rectangle {
+                            radius: 16
+                            color: silenceButton.checked ? Qt.rgba(1, 1, 1, 0.15) : Qt.rgba(0, 0, 0, 0.4)
+                            border.color: Qt.rgba(1, 1, 1, 0.25)
+                            border.width: 1
+                        }
+                        contentItem: Text {
+                            text: silenceButton.text
+                            color: theme.calmText
+                            font.pixelSize: 16
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                    }
+                }
+            }
+        }
     }
 
     Row {
@@ -276,7 +606,31 @@ Window {
                 horizontalAlignment: Text.AlignHCenter
                 verticalAlignment: Text.AlignVCenter
             }
-            onClicked: stack.currentIndex = (stack.currentIndex - 1 + stack.count) % stack.count
+            onClicked: {
+                var idx = (stack.currentIndex - 1 + stack.count) % stack.count
+                root.scheduleViewChange(idx)
+            }
+        }
+
+        Button {
+            id: homeButton
+            text: "Home"
+            implicitHeight: 72
+            implicitWidth: 120
+            background: Rectangle {
+                radius: 36
+                color: Qt.rgba(0, 0, 0, 0.35)
+                border.color: Qt.rgba(1, 1, 1, 0.2)
+                border.width: 1
+            }
+            contentItem: Text {
+                text: homeButton.text
+                font.pixelSize: 18
+                color: theme.calmText
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+            }
+            onClicked: root.scheduleViewChange(0)
         }
 
         Button {
@@ -296,7 +650,10 @@ Window {
                 horizontalAlignment: Text.AlignHCenter
                 verticalAlignment: Text.AlignVCenter
             }
-            onClicked: stack.currentIndex = (stack.currentIndex + 1) % stack.count
+            onClicked: {
+                var idx = (stack.currentIndex + 1) % stack.count
+                root.scheduleViewChange(idx)
+            }
         }
     }
 }

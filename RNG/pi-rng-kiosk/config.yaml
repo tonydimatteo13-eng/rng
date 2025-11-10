@@ -18,3 +18,7 @@ ui:
 storage:
   snapshot_bits: 16384
   snapshot_dir: data/snapshots
+  log_csv: data/logs/metrics.csv
+  export:
+    usb_mount: /media/pi/RNG-LOGS
+    snapshot_count: 10

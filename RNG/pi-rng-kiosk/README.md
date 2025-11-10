@@ -28,6 +28,7 @@ At boot the kiosk launches full-screen, blanks the cursor, and starts collecting
 * **Combiner:** Signed Z-scores flow through Stouffer combination and Benjamini–Hochberg FDR helpers in `analysis/combine.py` to produce the GDI plus per-test q-values.
 * **Detector:** `analysis/detector.py` enforces the calm → event → recover state machine using configurable thresholds/hysteresis.
 * **Storage:** `storage/metrics.py` keeps a ring buffer for the UI sparkline and snapshots raw bits whenever an event fires.
+* **Logging & export:** each analysis tick is appended to `data/logs/metrics.csv`, and a one-tap export copies the CSV plus recent snapshots to a USB drive.
 * **UI:** PySide6/QML (`ui/*.qml`) renders the gauge, sparkline, per-test lights, and events list. Touch taps cycle views; a long-press forces a refresh.
 
 ## Configuration (`config.yaml`)
@@ -53,9 +54,13 @@ ui:
 storage:
   snapshot_bits: 16384
   snapshot_dir: data/snapshots
+  log_csv: data/logs/metrics.csv
+  export:
+    usb_mount: /media/pi/RNG-LOGS
+    snapshot_count: 10
 ```
 
-Tune `alert.*` for deployment-specific noise tolerance. `storage.snapshot_bits` controls how many recent bits are written to disk when an alert fires.
+Tune `alert.*` for deployment-specific noise tolerance. `storage.snapshot_bits` controls how many recent bits are written to disk when an alert fires, while `storage.log_csv` and `storage.export.*` determine where CSV logs live and where the **Export Logs** button copies artifacts.
 
 ## Testing
 
@@ -80,4 +85,6 @@ Fixtures under `tests/fixtures/` provide biased and unbiased bitstreams that sho
 | GDI flat-lines & detector never leaves calm | Check `/dev/hwrng` permissions; the app logs fallback transitions, so inspect `~/.local/share/pi-rng-kiosk.log`. |
 | Frequent false positives | Increase `alert.gdi_z` or `alert.fdr_q`, or lengthen the rolling windows in `config.yaml`. |
 | Autostart fails after reboot | Run `systemctl --user status pi-rng-kiosk.service` and check `journalctl --user -u pi-rng-kiosk.service` for Python tracebacks. |
+## Data export
 
+Attach a FAT/exFAT-formatted USB drive and ensure it is mounted at the path configured in `config.yaml` (default `/media/pi/RNG-LOGS`). Tap **Export Logs** in the kiosk UI; the app writes a timestamped folder containing `metrics.csv` and the latest snapshots to the USB drive. The export status banner confirms success or highlights any mount/permission issues.

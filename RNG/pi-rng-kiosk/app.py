@@ -178,11 +178,23 @@ class RNGViewModel(QtCore.QObject):
     sparklineChanged = QtCore.Signal(list)
     testsChanged = QtCore.Signal(list)
     eventsChanged = QtCore.Signal(list)
+    exportCompleted = QtCore.Signal(bool, str)
+    histogramChanged = QtCore.Signal(list)
+    serialMatrixChanged = QtCore.Signal(list)
 
-    def __init__(self, queue: Queue, metrics: MetricsStore, parent=None) -> None:
+    def __init__(
+        self,
+        queue: Queue,
+        metrics: MetricsStore,
+        usb_mount: Path,
+        export_snapshot_count: int | None = None,
+        parent=None,
+    ) -> None:
         super().__init__(parent)
         self._queue = queue
         self.metrics = metrics
+        self.usb_mount = usb_mount
+        self.export_snapshot_count = export_snapshot_count
         self._timer = QtCore.QTimer(self)
         self._timer.setInterval(100)
         self._timer.timeout.connect(self._drain_queue)
@@ -192,8 +204,16 @@ class RNGViewModel(QtCore.QObject):
     def forceRefresh(self) -> None:
         self._drain_queue()
 
+    @QtCore.Slot()
+    def exportToUsb(self) -> None:
+        success, message = self.metrics.export_to_usb(
+            self.usb_mount, self.export_snapshot_count
+        )
+        self.exportCompleted.emit(success, message)
+
     def _drain_queue(self) -> None:
         updated = False
+        latest_bits: Sequence[int] | None = None
         while True:
             try:
                 snapshot, bits = self._queue.get_nowait()
@@ -202,9 +222,12 @@ class RNGViewModel(QtCore.QObject):
             self.metrics.add(snapshot, bits)
             self._emit_snapshot(snapshot)
             updated = True
+            latest_bits = bits
         if updated:
             self._emit_history()
             self._emit_events()
+            if latest_bits:
+                self._emit_distributions(latest_bits)
 
     def _emit_snapshot(self, snapshot: AnalysisSnapshot) -> None:
         self.gdiChanged.emit(snapshot.combined.gdi)
@@ -243,6 +266,28 @@ class RNGViewModel(QtCore.QObject):
             for record in self.metrics.events
         ]
         self.eventsChanged.emit(events)
+
+    def _emit_distributions(self, bits: Sequence[int]) -> None:
+        data = list(bits)
+        if not data:
+            return
+        zeros = data.count(0)
+        ones = len(data) - zeros
+        histogram = [
+            {"label": "0", "value": zeros},
+            {"label": "1", "value": ones},
+        ]
+        serial_counts = {"00": 0, "01": 0, "10": 0, "11": 0}
+        for idx in range(len(data) - 1):
+            pair = f"{data[idx]}{data[idx + 1]}"
+            if pair in serial_counts:
+                serial_counts[pair] += 1
+        serial_matrix = [
+            {"label": label, "value": value}
+            for label, value in serial_counts.items()
+        ]
+        self.histogramChanged.emit(histogram)
+        self.serialMatrixChanged.emit(serial_matrix)
 
 
 def parse_args() -> argparse.Namespace:
@@ -289,10 +334,19 @@ def main() -> int:
             fake_seed = int(args.fake)
         except (TypeError, ValueError):
             fake_seed = abs(hash(args.fake)) % (2**32)
+    storage_cfg = config.get("storage", {})
+    snapshot_dir = Path(storage_cfg.get("snapshot_dir", "data/snapshots"))
+    log_csv = storage_cfg.get("log_csv")
+    export_cfg = storage_cfg.get("export", {})
+    export_snapshot_count = export_cfg.get("snapshot_count", 10)
+    usb_mount = Path(export_cfg.get("usb_mount", "/media/pi/RNG-LOGS"))
+
     metrics = MetricsStore(
         maxlen=config["windows"]["history_length"],
-        snapshot_dir=Path(config["storage"]["snapshot_dir"]),
-        snapshot_bits=config["storage"]["snapshot_bits"],
+        snapshot_dir=snapshot_dir,
+        snapshot_bits=storage_cfg.get("snapshot_bits", 0),
+        csv_path=Path(log_csv) if log_csv else None,
+        export_snapshot_count=export_snapshot_count,
     )
 
     pipeline = PipelineRunner(
@@ -305,7 +359,12 @@ def main() -> int:
 
     app = QtGui.QGuiApplication(sys.argv)
     app.setOverrideCursor(QtCore.Qt.BlankCursor)
-    view_model = RNGViewModel(queue, metrics)
+    view_model = RNGViewModel(
+        queue,
+        metrics,
+        usb_mount=usb_mount,
+        export_snapshot_count=export_snapshot_count,
+    )
     engine = QtQml.QQmlApplicationEngine()
     engine.rootContext().setContextProperty("viewModel", view_model)
     main_qml = Path(__file__).parent / "ui" / "main.qml"
