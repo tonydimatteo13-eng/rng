@@ -497,9 +497,7 @@ Window {
                             onPaint: {
                                 var ctx = getContext("2d")
                                 ctx.reset()
-                                ctx.strokeStyle = theme.calmAccent
                                 ctx.lineWidth = 2
-                                ctx.beginPath()
                                 if (root.sparklineData.length > 1) {
                                     var max = -999
                                     var min = 999
@@ -509,17 +507,37 @@ Window {
                                         min = Math.min(min, val)
                                     }
                                     var range = Math.max(1, max - min)
-                                    for (var j = 0; j < root.sparklineData.length; j++) {
-                                        var point = root.sparklineData[j]
-                                        var normX = j / (root.sparklineData.length - 1)
+                                    function coords(idx) {
+                                        var point = root.sparklineData[idx]
+                                        var normX = idx / (root.sparklineData.length - 1)
                                         var normY = (point.gdi - min) / range
-                                        var px = normX * width
-                                        var py = height - normY * height
-                                        if (j === 0) ctx.moveTo(px, py)
-                                        else ctx.lineTo(px, py)
+                                        return {
+                                            x: normX * width,
+                                            y: height - normY * height,
+                                            state: point.state || "calm"
+                                        }
                                     }
+                                    var firstPoint = coords(0)
+                                    var lastColor = firstPoint.state === "event" ? theme.eventAccent : theme.calmAccent
+                                    ctx.beginPath()
+                                    ctx.strokeStyle = lastColor
+                                    ctx.moveTo(firstPoint.x, firstPoint.y)
+                                    for (var j = 1; j < root.sparklineData.length; j++) {
+                                        var pointCoords = coords(j)
+                                        var color = pointCoords.state === "event" ? theme.eventAccent : theme.calmAccent
+                                        if (color !== lastColor) {
+                                            ctx.lineTo(pointCoords.x, pointCoords.y)
+                                            ctx.stroke()
+                                            ctx.beginPath()
+                                            ctx.strokeStyle = color
+                                            ctx.moveTo(pointCoords.x, pointCoords.y)
+                                            lastColor = color
+                                        } else {
+                                            ctx.lineTo(pointCoords.x, pointCoords.y)
+                                        }
+                                    }
+                                    ctx.stroke()
                                 }
-                                ctx.stroke()
                             }
                         }
                     }
@@ -741,9 +759,7 @@ Window {
                         onPaint: {
                             var ctx = getContext("2d")
                             ctx.reset()
-                            ctx.strokeStyle = theme.eventAccent
                             ctx.lineWidth = 2
-                            ctx.beginPath()
                             if (root.sparklineData.length > 1) {
                                 var max = -999
                                 var min = 999
@@ -753,17 +769,37 @@ Window {
                                     min = Math.min(min, val)
                                 }
                                 var range = Math.max(1, max - min)
-                                for (var j = 0; j < root.sparklineData.length; j++) {
-                                    var point = root.sparklineData[j]
-                                    var normX = j / (root.sparklineData.length - 1)
+                                function coords(idx) {
+                                    var point = root.sparklineData[idx]
+                                    var normX = idx / (root.sparklineData.length - 1)
                                     var normY = (point.gdi - min) / range
-                                    var px = normX * width
-                                    var py = height - normY * height
-                                    if (j === 0) ctx.moveTo(px, py)
-                                    else ctx.lineTo(px, py)
+                                    return {
+                                        x: normX * width,
+                                        y: height - normY * height,
+                                        state: point.state || "calm"
+                                    }
                                 }
+                                var firstPoint = coords(0)
+                                var lastColor = firstPoint.state === "event" ? theme.eventAccent : theme.calmAccent
+                                ctx.beginPath()
+                                ctx.strokeStyle = lastColor
+                                ctx.moveTo(firstPoint.x, firstPoint.y)
+                                for (var j = 1; j < root.sparklineData.length; j++) {
+                                    var pointCoords = coords(j)
+                                    var color = pointCoords.state === "event" ? theme.eventAccent : theme.calmAccent
+                                    if (color !== lastColor) {
+                                        ctx.lineTo(pointCoords.x, pointCoords.y)
+                                        ctx.stroke()
+                                        ctx.beginPath()
+                                        ctx.strokeStyle = color
+                                        ctx.moveTo(pointCoords.x, pointCoords.y)
+                                        lastColor = color
+                                    } else {
+                                        ctx.lineTo(pointCoords.x, pointCoords.y)
+                                    }
+                                }
+                                ctx.stroke()
                             }
-                            ctx.stroke()
                         }
                     }
                 }

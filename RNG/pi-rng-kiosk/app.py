@@ -370,7 +370,7 @@ class RNGViewModel(QtCore.QObject):
 
     def _emit_history(self) -> None:
         history = [
-            {"t": record.timestamp_ms, "gdi": record.gdi}
+            {"t": record.timestamp_ms, "gdi": record.gdi, "state": record.state.value}
             for record in list(self.metrics.history)
         ]
         self.sparklineChanged.emit(history)
